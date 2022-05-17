@@ -19,7 +19,9 @@ def setup_logging():
 
 if __name__ == "__main__":
     setup_logging()
-    e = input("Are you playing on Lunar Client 1.8.9? [Y/n]")
-    if "n" in e:
+    e = input("Are you playing on\n[1] Lunar Cliwnt 1.8.9\n[2] Minecraft/Forge\n[3] on something else")
+    if "2" in e:
+        MINECRAFT_LOG_PATH = "/home/kopamed/.minecraft/logs/latest.log"
+    if "3" in e:
         MINECRAFT_LOG_PATH = input("Enter the path to the minecraft log file: ")
     model = Model(MINECRAFT_LOG_PATH)
