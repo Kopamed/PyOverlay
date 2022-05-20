@@ -11,12 +11,16 @@ from threading import Thread
 from typing import List, Dict
 
 # Todo: fix config manager bullshit and make this work on all OSs
-# Todo: cathch out errors when validating the api key
 # Todo: Remove error messages with ctrlc
-# Todo: sort the public methods before the private ones for better readability
-# Todo: sort by fkdr
 # Todo: detect path to log or ask lamooooooooooo
+# Todo: sort the public methods before the private ones for better readability
 # Todo: add this config system I just take the highest stars, fkdr, bblr, and wlr and winstreak, make that 100% and then figure out where everyone else sits based on that scale
+# Todo: add an option to change this
+
+# Changed:
+# Sort by fkdr
+# Added sleep before hypixel request to reduce chances of an error
+# Added validation to API Key verification
 
 MOJANG_API_PLAYER_LIMIT = 10
 
@@ -61,6 +65,9 @@ class ConfigManager:  # fix this bullshit
                 return line.strip("\n")
         return None
 
+    def save_config(self):
+        pass
+
 
 class Model:
     """
@@ -76,6 +83,7 @@ class Model:
         self.players: List[Player] = []  # players in current lobby
         self._cache: List[Player] = []  # cache storing all the known player's data to reduce the amount of
         # requests sent to hypixel and mojang
+        self._request_threads: List[Thread] = []
 
         self.config_manager = ConfigManager("config.txt")
         self._view = View(self)
@@ -93,13 +101,14 @@ class Model:
         self.update_view()
 
     def update_view(self):
+        self.players.sort(key=lambda x: x.index, reverse=True)  # Todo: add an option to change this
         if self.api_key is not None:
             self._view.stat_table()
         else:
             self._view.no_api_key()
 
     def is_player_in_cache(self, name: str) -> Player | None:
-        for player in self.players:
+        for player in self._cache:
             if player.in_game_name == name:
                 return player
         return None
@@ -121,6 +130,12 @@ class Model:
         self.players.clear()
         self.update_view()
 
+        for name in players:
+            player = self.is_player_in_cache(name)
+            if player is not None:
+                self.add_player(name)
+                players.remove(name)
+
         split_up: List[List[str]] = []
         # since mojang can only accept lists with up to 10 usernames, we have to split the list up into multiple lists
         for index, username in enumerate(players):
@@ -131,6 +146,7 @@ class Model:
 
         for section in split_up:
             t = Thread(target=self._add_listed_players_to_queue, args=(section,))
+            self._request_threads.append(t)
             t.start()
 
     def left_queue(self):
@@ -199,9 +215,23 @@ class Model:
         self.players.append(player)
 
     def _valid_key(self, api_key):
-        c = requests.get("https://api.hypixel.net/key?key=" + api_key)
-        self.set_hypixel_api_reachable(True)
-        return c != "" and "Invalid" not in c
+        while True:
+            time.sleep(0.01)
+            c = requests.get("https://api.hypixel.net/key?key=" + api_key)
+            if c.status_code== 429:
+                continue
+            self.set_hypixel_api_reachable(True)
+            return c != "" and "Invalid" not in c
+
+    def stop(self):
+        self._controller.stop()
+        for player in self.players:
+            player.data_download_thread.join(0.01)
+        for thread in self._request_threads:
+            thread.join(0.01)
+        self.config_manager.save_config()
+        clear_screen()
+        print("saved")
 
 
 class Player:
@@ -248,6 +278,9 @@ class Player:
             while True:
                 while not self._model.is_api_key_working():
                     time.sleep(0.5)
+                time.sleep(0.01) # reduces the chances of Connection Error Conection Aborted error
+                # https://stackoverflow.com/questions/52051989/requests-exceptions-connectionerror-connection-aborted
+                # -connectionreseterro
                 r = requests.get(f"https://api.hypixel.net/player?key={self._model.api_key}&uuid={self.uuid}")
                 self._model.set_hypixel_api_reachable(True)
                 if r.status_code == 403:  # code returned when your api key is incorrect
@@ -428,6 +461,9 @@ class Controller:
 
     def run(self):
         self._file_listener_thread.start()
+
+    def stop(self):
+        self._file_listener_thread.join(0.1)
 
 
 class Observable(ABC):
