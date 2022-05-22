@@ -1,30 +1,67 @@
 from __future__ import annotations
 
-import json
-import os
+try:  # installing and importing all the needed packages
+    import json
+    import os
+    import time
+    from abc import ABC, abstractmethod
+    from threading import Thread
+    from typing import List, Dict
+    import subprocess
+    from abc import ABC, abstractmethod
+    import platform
+    import sys
+    import logging
 
-import requests
-import logging
-import time
-from abc import ABC, abstractmethod
-from threading import Thread
-from typing import List, Dict
 
-# Todo: fix config manager bullshit and make this work on all OSs
+    def install(package):
+        os.system(f"{sys.executable} -m pip install {package}")
+
+
+    def uninstall(package):
+        os.system(f"{sys.executable} -m pip uninstall {package}")
+
+
+    try:
+        from colorama import init
+    except ModuleNotFoundError:
+        install("colorama")
+        from colorama import init
+    finally:
+        init()
+
+    try:
+        import requests
+    except ModuleNotFoundError:
+        install("requests")
+        import requests
+
+    try:
+        from pathlib import Path as Pathlib
+    except ModuleNotFoundError:
+        install("pathlib")
+        from pathlib import Path as Pathlib
+
+    try:
+        from datetime import datetime
+    except ModuleNotFoundError:
+        install("datetime")
+        from datetime import datetime
+
+except Exception as e:
+    print(e)
+    print("The overlay will attempt to run but is more likely to encounter issues")
+
 # Todo: Remove error messages with ctrlc
-# Todo: detect path to log or ask lamooooooooooo
 # Todo: sort the public methods before the private ones for better readability
 # Todo: add this config system I just take the highest stars, fkdr, bblr, and wlr and winstreak, make that 100% and then figure out where everyone else sits based on that scale
 # Todo: add an option to change this
-
-# Changed:
-# Sort by fkdr
-# Added sleep before hypixel request to reduce chances of an error
-# Added validation to API Key verification
+# Todo: Move most important classes to top
 
 MOJANG_API_PLAYER_LIMIT = 10
 
 
+# Misc standalone classes which make the code more readable ========================================================= #
 class Colors:
     PINK = '\033[95m'
     BLUE = '\033[94m'
@@ -32,9 +69,9 @@ class Colors:
     GREEN = '\033[92m'
     GOLD = '\033[93m'
     RED = '\033[91m'
-    ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+    ENDC = '\033[0m'
 
 
 class APIStatus:
@@ -43,35 +80,41 @@ class APIStatus:
     UNREACHABLE = Colors.BOLD + Colors.RED + "Unreachable" + Colors.ENDC
 
 
-def ensure_dir(file_path):
-    directory = os.path.dirname(file_path)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
-
-class ConfigManager:  # fix this bullshit
-    def __init__(self, config_path):
-        self.config_path = config_path
+class ConfigManager:
+    def __init__(self):
+        self.config_folder = str(Pathlib.home()) + os.sep + "PyOverlay"
+        self.config_path = self.config_folder + os.sep + "config"
 
     def save_api_key(self, api_key):
+        self._assure_config_exists()
         with open(self.config_path, "w") as f:
             f.write(api_key)
 
     def get_api_key(self):
+        self._assure_config_exists()
         if not os.path.isfile(self.config_path):
             open(self.config_path, "w").close()
+            return None
         with open(self.config_path, "r") as f:
-            for line in f.readlines():
-                return line.strip("\n")
+            data = f.read().strip("\n")
+            if data != "":
+                return data
         return None
 
-    def save_config(self):
-        pass
+    def _assure_config_exists(self):
+        if not os.path.exists(self.config_folder):
+            os.makedirs(self.config_folder)
+
+        if not os.path.isfile(self.config_path):
+            whatver = open(self.config_path, "w")
+            whatver.write("")
+            whatver.close()
 
 
 class Model:
     """
-    Core of the program. This class has the main logic and methods which get called by the controller when a new line is added to the log file
+    Core of the program. This class has the main logic and methods which get called by the controller when a new line
+    is added to the log file
     """
 
     def __init__(self, file_path: str, api_key: str = None):
@@ -85,7 +128,7 @@ class Model:
         # requests sent to hypixel and mojang
         self._request_threads: List[Thread] = []
 
-        self.config_manager = ConfigManager("config.txt")
+        self.config_manager = ConfigManager()
         self._view = View(self)
         self._controller = Controller(self, file_path)
         self._controller.run()
@@ -126,19 +169,20 @@ class Model:
                 self.players.remove(player)
         self.update_view()
 
-    def joined_new_queue(self, players: List[str]):
+    def joined_new_queue(self, joined_players: List[str]):
         self.players.clear()
         self.update_view()
 
-        for name in players:
+        for name in joined_players:
             player = self.is_player_in_cache(name)
             if player is not None:
+                logging.debug(name + " was in cache")
                 self.add_player(name)
-                players.remove(name)
+                joined_players.remove(name)
 
         split_up: List[List[str]] = []
         # since mojang can only accept lists with up to 10 usernames, we have to split the list up into multiple lists
-        for index, username in enumerate(players):
+        for index, username in enumerate(joined_players):
             if index % MOJANG_API_PLAYER_LIMIT == 0:
                 split_up.append([])
 
@@ -147,6 +191,7 @@ class Model:
         for section in split_up:
             t = Thread(target=self._add_listed_players_to_queue, args=(section,))
             self._request_threads.append(t)
+            logging.debug("Started mass stat request: " + str(section))
             t.start()
 
     def left_queue(self):
@@ -166,6 +211,47 @@ class Model:
     def player_updated(self, player):
         if player in self.players:
             self.update_view()
+
+    def is_api_key_working(self):
+        return self.api_key is not None
+
+    def set_hypixel_api_reachable(self, is_it: bool):
+        if is_it:
+            self.hypixel_api_reachable = APIStatus.REACHABLE
+        else:
+            self.hypixel_api_reachable = APIStatus.UNREACHABLE
+
+    def set_mojang_api_reachable(self, is_it: bool):
+        if is_it:
+            self.mojang_api_reachable = APIStatus.REACHABLE
+        else:
+            self.mojang_api_reachable = APIStatus.UNREACHABLE
+
+    def players_cached(self) -> int:
+        return len(self._cache)
+
+    def stop(self):
+        self._controller.stop()
+        for player in self.players:
+            player.data_download_thread.join(0.01)
+        for thread in self._request_threads:
+            thread.join(0.01)
+        clear_screen()
+        print("saved")
+
+    def _add_player(self, player: Player):
+        if not self.is_player_in_cache(player.in_game_name):
+            self._cache.append(player)
+        self.players.append(player)
+
+    def _valid_key(self, api_key):
+        while True:
+            time.sleep(0.01)
+            c = requests.get("https://api.hypixel.net/key?key=" + api_key)
+            if c.status_code == 429:
+                continue
+            self.set_hypixel_api_reachable(True)
+            return c != "" and "Invalid" not in c
 
     def _add_listed_players_to_queue(self, split_up: List[str]):
         headers = {"Content-Type": "application/json"}
@@ -191,56 +277,14 @@ class Model:
                 self.set_mojang_api_reachable(False)
                 time.sleep(8)  # arbitrary number of seconds to sleep. Pulled it out of my ass
 
-    def is_api_key_working(self):
-        return self.api_key is not None
-
-    def set_hypixel_api_reachable(self, is_it: bool):
-        if is_it:
-            self.hypixel_api_reachable = APIStatus.REACHABLE
-        else:
-            self.hypixel_api_reachable = APIStatus.UNREACHABLE
-
-    def set_mojang_api_reachable(self, is_it: bool):
-        if is_it:
-            self.mojang_api_reachable = APIStatus.REACHABLE
-        else:
-            self.mojang_api_reachable = APIStatus.UNREACHABLE
-
-    def players_cached(self) -> int:
-        return len(self._cache)
-
-    def _add_player(self, player: Player):
-        if not self.is_player_in_cache(player.in_game_name):
-            self._cache.append(player)
-        self.players.append(player)
-
-    def _valid_key(self, api_key):
-        while True:
-            time.sleep(0.01)
-            c = requests.get("https://api.hypixel.net/key?key=" + api_key)
-            if c.status_code== 429:
-                continue
-            self.set_hypixel_api_reachable(True)
-            return c != "" and "Invalid" not in c
-
-    def stop(self):
-        self._controller.stop()
-        for player in self.players:
-            player.data_download_thread.join(0.01)
-        for thread in self._request_threads:
-            thread.join(0.01)
-        self.config_manager.save_config()
-        clear_screen()
-        print("saved")
-
 
 class Player:
     rank_colours: dict[str, str] = {"MVP_PLUS": Colors.CYAN, "MVP": Colors.CYAN, "SUPERSTAR": Colors.GOLD,
                                     "VIP": Colors.GREEN,
                                     "VIP_PLUS": Colors.GREEN, "NON": ""}
 
-    def __init__(self, ign: str, model: Model, uuid: str = None, nicked: bool = False):
-        self._model = model
+    def __init__(self, ign: str, model_: Model, uuid: str = None, nicked: bool = False):
+        self._model = model_
 
         self.in_game_name = ign
         self.uuid = uuid
@@ -262,6 +306,20 @@ class Player:
         self.data_download_thread = Thread(target=self._populate_player_data)
         self.data_download_thread.start()
 
+    def to_string(self, form: str) -> str:
+        return form.format(
+            self.rank_colours[self.rank], self.in_game_name,
+            self._get_tag_colour(), self._get_tag(),
+            self.stars,
+            self.winstreak,
+            self.fkdr,
+            self.wlr,
+            self.bblr,
+            self.wins,
+            self.finals,
+            stat_colour=self._get_stat_colour()
+        )
+
     def _populate_player_data(self):
         """
         Method which requests data from the hypixel api and fuck
@@ -278,7 +336,7 @@ class Player:
             while True:
                 while not self._model.is_api_key_working():
                     time.sleep(0.5)
-                time.sleep(0.01) # reduces the chances of Connection Error Conection Aborted error
+                time.sleep(0.01)  # reduces the chances of Connection Error Conection Aborted error
                 # https://stackoverflow.com/questions/52051989/requests-exceptions-connectionerror-connection-aborted
                 # -connectionreseterro
                 r = requests.get(f"https://api.hypixel.net/player?key={self._model.api_key}&uuid={self.uuid}")
@@ -307,10 +365,10 @@ class Player:
 
                 try:
                     self.rank = self.json["monthlyPackageRank"]
-                except KeyError as first:
+                except KeyError:
                     try:
                         self.rank = self.json["newPackageRank"]
-                    except KeyError as second:
+                    except KeyError:
                         pass
 
                 if str(self.rank) == "NONE":
@@ -318,45 +376,45 @@ class Player:
 
                 try:
                     self.party = self.json["channel"] == "PARTY"
-                except KeyError as e:
+                except KeyError:
                     self.party = False
 
                 try:
                     self.finals = bw_stats["final_kills_bedwars"]
-                except KeyError as e:
+                except KeyError:
                     pass
 
                 try:
                     self.wins = bw_stats["wins_bedwars"]
-                except KeyError as e:
+                except KeyError:
                     pass
 
                 try:
                     self.fkdr = self.finals if bw_stats["final_deaths_bedwars"] == 0 \
                         else round(self.finals / bw_stats["final_deaths_bedwars"], 2)  # je mange des enfants
-                except KeyError as e:
+                except KeyError:
                     pass
 
                 try:
                     self.wlr = self.wins if bw_stats["losses_bedwars"] == 0 \
                         else round(self.wins / bw_stats["losses_bedwars"], 2)
-                except KeyError as e:
+                except KeyError:
                     pass
 
                 try:
                     self.bblr = bw_stats["beds_broken_bedwars"] if bw_stats["beds_lost_bedwars"] == 0 \
                         else round(bw_stats["beds_broken_bedwars"] / bw_stats["beds_lost_bedwars"], 2)
-                except KeyError as e:
+                except KeyError:
                     pass
 
                 try:
                     self.winstreak = bw_stats["winstreak"]
-                except KeyError as e:
+                except KeyError:
                     pass
 
                 try:
                     self.stars = achievements["bedwars_level"]
-                except KeyError as e:
+                except KeyError:
                     pass
 
                 self.index = self.stars * self.fkdr ** 2
@@ -375,7 +433,7 @@ class Player:
                 try:
                     self.uuid = json.loads(r.text)["id"]
                     break
-                except KeyError as e:
+                except KeyError:
                     time.sleep(1)
             elif r.status_code == 204:  # player most likely does not exist
                 self.nicked = True
@@ -422,20 +480,6 @@ class Player:
 
         return "\033[92m"
 
-    def to_string(self, form: str) -> str:
-        return form.format(
-            self.rank_colours[self.rank], self.in_game_name,
-            self._get_tag_colour(), self._get_tag(),
-            self.stars,
-            self.winstreak,
-            self.fkdr,
-            self.wlr,
-            self.bblr,
-            self.wins,
-            self.finals,
-            stat_colour=self._get_stat_colour()
-        )
-
 
 def fix_line(line: str) -> str:
     """
@@ -451,12 +495,12 @@ class Controller:
     Class to make setting up the file listener and adding observers to it a 1-liner
     """
 
-    def __init__(self, model: Model, file_path: str):
+    def __init__(self, model_: Model, file_path: str):
         self._file_listener = FileListener(file_path)
-        self._file_listener.attach(JoinObserver(model))
-        self._file_listener.attach(LeaveObserver(model))
-        self._file_listener.attach(ApiKeyObserver(model))
-        self._file_listener.attach(LobbyLeaveObserver(model))
+        self._file_listener.attach(JoinObserver(model_))
+        self._file_listener.attach(LeaveObserver(model_))
+        self._file_listener.attach(ApiKeyObserver(model_))
+        self._file_listener.attach(LobbyLeaveObserver(model_))
         self._file_listener_thread = Thread(target=self._file_listener.listen)
 
     def run(self):
@@ -518,7 +562,7 @@ class FileListener(Observable):
                 for line in f.readlines()[self._read_from_index:]:
                     line = fix_line(line)
                     self.new_lines.append(line)
-                    logging.debug("Added " + line + " to new lines")
+                    # logging.debug("Added " + line + " to new lines")
                     self._read_from_index += 1
 
             if len(self.new_lines) != 0:
@@ -528,16 +572,16 @@ class FileListener(Observable):
 
     def attach(self, observer: Observer) -> None:
         self._observers.append(observer)
-        logging.debug(f"Attached {observer} to {self}")
+        # logging.debug(f"Attached {observer} to {self}")
 
     def detach(self, observer: Observer) -> None:
         self._observers.remove(observer)
-        logging.debug(f"Removed {observer} from {self}")
+        # logging.debug(f"Removed {observer} from {self}")
 
     def notify(self) -> None:
         for observer in self._observers:
             observer.update(self)
-        logging.debug(f"Update {len(self._observers)} listening to {self}")
+        # logging.debug(f"Update {len(self._observers)} listening to {self}")
 
 
 def clear_screen(fnc=None):
@@ -550,8 +594,8 @@ def clear_screen(fnc=None):
 
 
 class View:
-    def __init__(self, model: Model):
-        self._model = model
+    def __init__(self, model_: Model):
+        self._model = model_
 
     def runtime_stats(self):
         print(Colors.GOLD + "Make sure you have Auto Who enabled in Hypixel Mods" + Colors.ENDC)
@@ -575,12 +619,6 @@ class View:
               + Colors.RED + " on hypixel to generate a key"
               + Colors.ENDC)
 
-    def _sep_line(self, header):
-        split_up_header = header.split("│")
-        for index, content in enumerate(split_up_header):
-            split_up_header[index] = "─" * len(content)
-        print("┼".join(i for i in split_up_header))
-
     @clear_screen
     def stat_table(self):
         self.runtime_stats()
@@ -601,6 +639,13 @@ class View:
             for player in self._model.players:
                 print(player.to_string(form))
 
+    @staticmethod
+    def _sep_line(header):
+        split_up_header = header.split("│")
+        for index, content in enumerate(split_up_header):
+            split_up_header[index] = "─" * len(content)
+        print("┼".join(i for i in split_up_header))
+
 
 class Observer(ABC):
     """
@@ -620,8 +665,8 @@ class FileObserver(Observer):
     Extends the observable class to allow FileListeners to pass through
     """
 
-    def __init__(self, model: Model):
-        self._model = model
+    def __init__(self, model_: Model):
+        self._model = model_
 
     @abstractmethod
     def update(self, observable: FileListener) -> None:
@@ -633,16 +678,17 @@ class JoinObserver(FileObserver):
     Will read through the lines to determine if any new players have joined
     """
 
-    def __init__(self, model: Model):
-        super().__init__(model)
+    def __init__(self, model_: Model):
+        super().__init__(model_)
 
     def update(self, observable: FileListener) -> None:
         for line in observable.new_lines:
             if line.lower().startswith("online: "):
-                logging.debug("Joined lobby!")
+                logging.info("Joined new queue!")
                 self._model.joined_new_queue(line.strip("ONLINE: ").split(", "))
             elif " has joined" in line.lower():
                 name = line.split(" ")[0]
+                logging.info(name + "joined the queue!")
                 self._model.add_player(name)
 
 
@@ -651,14 +697,14 @@ class LeaveObserver(FileObserver):
     Will read through the lines to determine if any players have left
     """
 
-    def __init__(self, model: Model):
-        super().__init__(model)
+    def __init__(self, model_: Model):
+        super().__init__(model_)
 
     def update(self, observable: FileListener) -> None:
         for line in observable.new_lines:
             if " has quit!" in line:
                 name = line.split(" ")[0]
-                logging.debug(name + " has left the lobby")
+                logging.info(name + " has left the queue")
                 self._model.remove_player(name)
 
 
@@ -667,12 +713,13 @@ class LobbyLeaveObserver(FileObserver):
     Will read through the lines to determine if player has left the queuing lobby
     """
 
-    def __init__(self, model: Model):
-        super().__init__(model)
+    def __init__(self, model_: Model):
+        super().__init__(model_)
 
     def update(self, observable: FileListener) -> None:
         for line in observable.new_lines:
             if "joined the lobby!" in line:  # to change
+                logging.info("Left the queue!")
                 self._model.left_queue()
 
 
@@ -681,11 +728,131 @@ class ApiKeyObserver(FileObserver):
     Will read through the lines to determine if the game has started
     """
 
-    def __init__(self, model: Model):
-        super().__init__(model)
+    def __init__(self, model_: Model):
+        super().__init__(model_)
 
     def update(self, observable: FileListener) -> None:
         for line in observable.new_lines:
             if line.startswith("Your new API key is"):  # to change
                 api_key = line.split(" ")[-1]
+                logging.info("New API key found: " + api_key)
                 self._model.new_api_key(api_key)
+
+
+# Classes and functions required for initialization ================================================================== #
+class Paths(ABC):
+    @abstractmethod
+    def get_lunar_path(self):
+        pass
+
+    @abstractmethod
+    def get_badlion_path(self):
+        pass
+
+    @abstractmethod
+    def get_mc_path(self):
+        pass
+
+
+class LinuxPaths(Paths):
+    def get_lunar_path(self):
+        return "/.lunarclient/offline/1.8/logs/latest.log"
+
+    def get_badlion_path(self):
+        return "/.minecraft/logs/blclient/minecraft/latest.log"
+
+    def get_mc_path(self):
+        return "/.minecraft/logs/latest.log"
+
+
+class WindowsPaths(Paths):
+    def get_lunar_path(self):
+        return "\.lunarclient\offline\\1.8\logs\latest.log"
+
+    def get_badlion_path(self):
+        return "\AppData\Roaming\.minecraft\logs\\blclient\minecraft\latest.log"
+
+    def get_mc_path(self):
+        return "\AppData\Roaming\.minecraft\logs\latest.log"
+
+
+class DarwinPaths(Paths):
+    def get_lunar_path(self):
+        return "/.lunarclient/offline/1.8/logs/latest.log"
+
+    def get_badlion_path(self):
+        return "/Library/Application Support/minecraft/logs/blclient/minecraft/latest.log"
+
+    def get_mc_path(self):
+        return "/Library/Application Support/minecraft/logs/latest.log"
+
+
+def get_paths() -> Paths | None:
+    if platform.system() == "Linux":
+        return LinuxPaths()
+    elif platform.system() == "Darwin":
+        return DarwinPaths()
+    elif platform.system() == "Windows":
+        return WindowsPaths()
+
+    return None
+
+
+def setup_logging():
+    log_name = '/home/kopamed/PyOverlay/logs/{}.log'
+    ensure_dir(log_name)
+    logging.basicConfig(
+        filename=log_name.format(datetime.now().strftime("%d-%m-%Y_%H-%M-%S")),
+        filemode='w', format='[%(asctime)s] [%(levelname)s]: %(message)s', level=logging.DEBUG)
+
+
+def ensure_dir(file_path):
+    directory = os.path.dirname(file_path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+
+if __name__ == "__main__":
+    setup_logging()
+    print("\033[96m", end="")
+    print("""    ____        ____                  __           
+   / __ \__  __/ __ \_   _____  _____/ /___ ___  __
+  / /_/ / / / / / / / | / / _ \/ ___/ / __ `/ / / /
+ / ____/ /_/ / /_/ /| |/ /  __/ /  / / /_/ / /_/ / 
+/_/    \__, /\____/ |___/\___/_/  /_/\__,_/\__, /  
+      /____/                              /____/""" + "\033[0m")
+
+    mc_log_path = str(Pathlib.home())
+    paths = get_paths()
+
+    clients = []
+    if os.path.exists(mc_log_path + paths.get_mc_path()):
+        clients.append("Minecraft/Forge")
+    if os.path.exists(mc_log_path + paths.get_lunar_path()):
+        clients.append("Lunar Client")
+    if os.path.exists(mc_log_path + paths.get_badlion_path()):
+        clients.append("Badlion Client")
+
+    while True:
+        mc_log_path = str(Pathlib.home())
+        print("The following clients have been found on your computer:",
+              "None" if len(clients) == 0 else ", ".join(i for i in clients))
+        e = input("Are you playing on\n[1] Lunar Client 1.8.9\n[2] Badlion Client\n[3] Minecraft/Forge\n[4] Something "
+                  "else/I use a custom directory for minecraft\n")
+        if "1" in e:
+            mc_log_path += paths.get_lunar_path()
+        elif "2" in e:
+            mc_log_path += paths.get_badlion_path()
+        elif "3" in e:
+            mc_log_path += paths.get_mc_path()
+        else:
+            print("Enter the path to your minecraft log file. The default one is",
+                  str(Pathlib.home()) + paths.get_mc_path())
+            mc_log_path = input()
+
+        if os.path.exists(mc_log_path):
+            break
+        else:
+            print(f"The log file {mc_log_path} was not found!")
+
+    model = Model(mc_log_path)
