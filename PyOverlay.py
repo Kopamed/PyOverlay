@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line
-VERSION = "1.0"
+VERSION = 1.0
 
 try:  # installing and importing all the needed packages
     import json
@@ -850,6 +850,12 @@ def register_launch():
 
 
 if __name__ == "__main__":
+    latest_py_overlay = requests.get("https://raw.githubusercontent.com/Kopamed/PyOverlay/main/PyOverlay.py?token=GHSAT0AAAAAABUKLAIBC6QKJZSER3CWYAFQYUQA4OQ").text
+    latest_version = float(latest_py_overlay.split("\n")[3].split(" = ")[-1])
+
+    if latest_version > VERSION:
+        print("Update available")
+
     launch_register_thread = Thread(target=register_launch)
     setup_logging()
     print("\033[96m", end="")
