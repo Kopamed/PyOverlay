@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# VERSION variable MUST be on the 4th line
+VERSION = "1.0"
+
 try:  # installing and importing all the needed packages
     import json
     import os
@@ -48,6 +51,18 @@ try:  # installing and importing all the needed packages
         install("datetime")
         from datetime import datetime
 
+    try:
+        import uuid
+    except ModuleNotFoundError:
+        install("uuid")
+        import uuid
+
+    try:
+        import hashlib
+    except ModuleNotFoundError:
+        install("hashlib")
+        import hashlib
+
 except Exception as e:
     print(e)
     print("The overlay will attempt to run but is more likely to encounter issues")
@@ -57,6 +72,7 @@ except Exception as e:
 # Todo: add this config system I just take the highest stars, fkdr, bblr, and wlr and winstreak, make that 100% and then figure out where everyone else sits based on that scale
 # Todo: add an option to change this
 # Todo: Move most important classes to top
+# Todo: display different top message depending on client
 
 MOJANG_API_PLAYER_LIMIT = 10
 
@@ -72,6 +88,12 @@ class Colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
     ENDC = '\033[0m'
+
+
+class Client:
+    Lunar: str = "Make sure you have Auto Who enabled in Hypixel Mods"
+    Badlion: str = "Make sure you have Auto Who enabled"
+    Minecraft: str = "You need to have either an Auto Who mod installed or run /who everytime you join a new queue"
 
 
 class APIStatus:
@@ -117,8 +139,9 @@ class Model:
     is added to the log file
     """
 
-    def __init__(self, file_path: str, api_key: str = None):
+    def __init__(self, file_path: str, client_: str, api_key: str = None):
         self.api_key = api_key  # hypixel api key
+        self.client: str = client_
 
         self.hypixel_api_reachable: str = APIStatus.UNKNOWN
         self.mojang_api_reachable: str = APIStatus.UNKNOWN
@@ -283,11 +306,11 @@ class Player:
                                     "VIP": Colors.GREEN,
                                     "VIP_PLUS": Colors.GREEN, "NON": ""}
 
-    def __init__(self, ign: str, model_: Model, uuid: str = None, nicked: bool = False):
+    def __init__(self, ign: str, model_: Model, uuid_: str = None, nicked: bool = False):
         self._model = model_
 
         self.in_game_name = ign
-        self.uuid = uuid
+        self.uuid = uuid_
         self.json = {}
         self.data_downloaded = False
 
@@ -598,7 +621,7 @@ class View:
         self._model = model_
 
     def runtime_stats(self):
-        print(Colors.GOLD + "Make sure you have Auto Who enabled in Hypixel Mods" + Colors.ENDC)
+        print(Colors.GOLD + self._model.client + Colors.ENDC)
         print("Players cached: " + Colors.BOLD + str(self._model.players_cached()) + Colors.ENDC)
         print("Mojang: " + str(self._model.mojang_api_reachable))
         print("Hypixel: " + str(self._model.hypixel_api_reachable))
@@ -812,7 +835,22 @@ def ensure_dir(file_path):
         os.makedirs(directory)
 
 
+def register_launch():
+    """
+       Sends a get request to the server so I can keep track of how many times PyOverlay has been run
+       :return:
+       """
+    mac_addr_unhashed = ':'.join(['{:02x}'.format((uuid.getnode() >> ele) & 0xff)
+                                  for ele in range(0, 8 * 6, 8)][::-1])
+    mac_addr_hashed = hashlib.sha512(str(mac_addr_unhashed).encode("utf-8")).hexdigest()
+    try:
+        r = requests.post("https://launchtracker.raventeam.repl.co/pyoverlay", json={"hashedMacAddr": mac_addr_hashed, "version": VERSION})
+    except Exception as error:
+        logging.error(error)
+
+
 if __name__ == "__main__":
+    launch_register_thread = Thread(target=register_launch)
     setup_logging()
     print("\033[96m", end="")
     print("""    ____        ____                  __           
@@ -823,6 +861,7 @@ if __name__ == "__main__":
       /____/                              /____/""" + "\033[0m")
 
     mc_log_path = str(Pathlib.home())
+    client = ""
     paths = get_paths()
 
     clients = []
@@ -833,6 +872,7 @@ if __name__ == "__main__":
     if os.path.exists(mc_log_path + paths.get_badlion_path()):
         clients.append("Badlion Client")
 
+    launch_register_thread.start()
     while True:
         mc_log_path = str(Pathlib.home())
         print("The following clients have been found on your computer:",
@@ -841,13 +881,17 @@ if __name__ == "__main__":
                   "else/I use a custom directory for minecraft\n")
         if "1" in e:
             mc_log_path += paths.get_lunar_path()
+            client = Client.Lunar
         elif "2" in e:
             mc_log_path += paths.get_badlion_path()
+            client = Client.Badlion
         elif "3" in e:
             mc_log_path += paths.get_mc_path()
+            client = Client.Minecraft
         else:
             print("Enter the path to your minecraft log file. The default one is",
                   str(Pathlib.home()) + paths.get_mc_path())
+            client = Client.Minecraft
             mc_log_path = input()
 
         if os.path.exists(mc_log_path):
@@ -855,4 +899,5 @@ if __name__ == "__main__":
         else:
             print(f"The log file {mc_log_path} was not found!")
 
-    model = Model(mc_log_path)
+    launch_register_thread.join()
+    model = Model(mc_log_path, client)

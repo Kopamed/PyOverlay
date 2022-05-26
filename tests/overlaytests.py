@@ -8,6 +8,7 @@ try:
     import platform
     import os
     import sys
+    import unittest
 
 
     def install(package):
@@ -25,6 +26,7 @@ try:
 
 except Exception as e:
     print(e)
+
 
 class Paths(ABC):
     @abstractmethod
