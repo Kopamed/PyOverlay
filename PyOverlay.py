@@ -850,12 +850,6 @@ def register_launch():
 
 
 if __name__ == "__main__":
-    latest_py_overlay = requests.get("https://raw.githubusercontent.com/Kopamed/PyOverlay/main/PyOverlay.py?token=GHSAT0AAAAAABUKLAIBC6QKJZSER3CWYAFQYUQA4OQ").text
-    latest_version = float(latest_py_overlay.split("\n")[3].split(" = ")[-1])
-
-    if latest_version > VERSION:
-        print("Update available")
-
     launch_register_thread = Thread(target=register_launch)
     setup_logging()
     print("\033[96m", end="")
@@ -865,6 +859,19 @@ if __name__ == "__main__":
  / ____/ /_/ / /_/ /| |/ /  __/ /  / / /_/ / /_/ / 
 /_/    \__, /\____/ |___/\___/_/  /_/\__,_/\__, /  
       /____/                              /____/""" + "\033[0m")
+
+    latest_py_overlay = requests.get(
+        "https://raw.githubusercontent.com/Kopamed/PyOverlay/main/PyOverlay.py?token=GHSAT0AAAAAABUKLAIBSYVBLRQO47YYKAP2YUQBEYA").text
+    latest_version = float(latest_py_overlay.split("\n")[3].split(" = ")[-1])
+
+    if latest_version > VERSION:
+        print(
+            f"An update is available. Would you like to update PyOverlay from version {VERSION} to  {latest_version}? [Y/n]")
+        if "n" not in input().lower():
+            with open("PyOverlay.py", "w") as f:
+                f.write(latest_py_overlay)
+            print("Update complete! Please re-run PyOverlay")
+            sys.exit(0)
 
     mc_log_path = str(Pathlib.home())
     client = ""
