@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line
-VERSION = 1.0
+VERSION = 1.1
 
 try:  # installing and importing all the needed packages
     import json
@@ -610,7 +610,7 @@ class FileListener(Observable):
 def clear_screen(fnc=None):
     def wrapper(*args):
         ret = fnc(*args)
-        print("\x1b[2J\x1b[H", end="")
+        os.system('cls' if os.name == 'nt' else 'clear')
         return ret
 
     return wrapper
