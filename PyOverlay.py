@@ -822,7 +822,7 @@ def get_paths() -> Paths | None:
 
 
 def setup_logging():
-    log_name = '/home/kopamed/PyOverlay/logs/{}.log'
+    log_name = str(Pathlib.home()) + '/PyOverlay/logs/{}.log'
     ensure_dir(log_name)
     logging.basicConfig(
         filename=log_name.format(datetime.now().strftime("%d-%m-%Y_%H-%M-%S")),
@@ -861,17 +861,19 @@ if __name__ == "__main__":
       /____/                              /____/""" + "\033[0m")
 
     latest_py_overlay = requests.get(
-        "https://raw.githubusercontent.com/Kopamed/PyOverlay/main/PyOverlay.py?token=GHSAT0AAAAAABUKLAIBSYVBLRQO47YYKAP2YUQBEYA").text
-    latest_version = float(latest_py_overlay.split("\n")[3].split(" = ")[-1])
+        "https://raw.githubusercontent.com/Kopamed/PyOverlay/main/PyOverlay.py")
+    if latest_py_overlay.status_code == 200:
+        latest_py_overlay = latest_py_overlay.text
+        latest_version = float(latest_py_overlay.split("\n")[3].split(" = ")[-1])
 
-    if latest_version > VERSION:
-        print(
-            f"An update is available. Would you like to update PyOverlay from version {VERSION} to  {latest_version}? [Y/n]")
-        if "n" not in input().lower():
-            with open("PyOverlay.py", "w") as f:
-                f.write(latest_py_overlay)
-            print("Update complete! Please re-run PyOverlay")
-            sys.exit(0)
+        if latest_version > VERSION:
+            print(
+                f"An update is available. Would you like to update PyOverlay from version {VERSION} to  {latest_version}? [Y/n]")
+            if "n" not in input().lower():
+                with open("PyOverlay.py", "w") as f:
+                    f.write(latest_py_overlay)
+                print("Update complete! Please re-run PyOverlay")
+                sys.exit(0)
 
     mc_log_path = str(Pathlib.home())
     client = ""
