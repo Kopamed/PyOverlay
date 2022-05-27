@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line
-VERSION = 1.1
+VERSION = 1.11
 
 try:  # installing and importing all the needed packages
     import json
