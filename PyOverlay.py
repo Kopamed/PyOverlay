@@ -852,6 +852,7 @@ def register_launch():
 if __name__ == "__main__":
     launch_register_thread = Thread(target=register_launch)
     setup_logging()
+
     print("\033[96m", end="")
     print("""    ____        ____                  __           
    / __ \__  __/ __ \_   _____  _____/ /___ ___  __
