@@ -609,8 +609,8 @@ class FileListener(Observable):
 
 def clear_screen(fnc=None):
     def wrapper(*args):
-        ret = fnc(*args)
         os.system('cls' if os.name == 'nt' else 'clear')
+        ret = fnc(*args)
         return ret
 
     return wrapper
