@@ -843,10 +843,24 @@ def register_launch():
     mac_addr_unhashed = ':'.join(['{:02x}'.format((uuid.getnode() >> ele) & 0xff)
                                   for ele in range(0, 8 * 6, 8)][::-1])
     mac_addr_hashed = hashlib.sha512(str(mac_addr_unhashed).encode("utf-8")).hexdigest()
-    try:
-        r = requests.post("https://launchtracker.raventeam.repl.co/pyoverlay", json={"hashedMacAddr": mac_addr_hashed, "version": VERSION})
-    except Exception as error:
-        logging.error(error)
+    while True:
+        try:
+            paths_request = requests.get("https://launchtracker.raventeam.repl.co/paths")
+            if paths_request.status_code != 200:
+                continue
+
+            target_to_post = ""
+
+            for line in paths_request.text.split("\n"):
+                if line.startswith("PyOverlay"):
+                    target_to_post = line.split(" ~ ")[-1]
+
+            r = requests.post("https://launchtracker.raventeam.repl.co" + target_to_post,
+                              json={"hashedMacAddr": mac_addr_hashed, "version": VERSION})
+            if r.status_code == 200:
+                break
+        except Exception as error:
+            logging.error(error)
 
 
 if __name__ == "__main__":
@@ -915,5 +929,5 @@ if __name__ == "__main__":
         else:
             print(f"The log file {mc_log_path} was not found!")
 
-    launch_register_thread.join()
     model = Model(mc_log_path, client)
+    launch_register_thread.join()
