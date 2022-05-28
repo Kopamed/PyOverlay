@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line always
-VERSION = 1.24
+VERSION = 1.25
 
 try:  # installing and importing all the needed packages
     import math
@@ -900,6 +900,7 @@ if __name__ == "__main__":
     launch_register_thread = Thread(target=register_launch)
     setup_logging()
 
+    clear_screen()
     print("\033[96m", end="")
     print("""    ____        ____                  __           
    / __ \__  __/ __ \_   _____  _____/ /___ ___  __
