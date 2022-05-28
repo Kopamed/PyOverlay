@@ -673,7 +673,7 @@ class View:
 
         if len(self._model.players) > 1:
             index = self._model.get_average_index()
-            print("Lobby liquidity: {:<3} | Lobby index: {}".format(
+            print("Lobby liquidity: {:<4} | Lobby index: {}".format(
                 self._model.get_queue_liquidity(),
                 Colours.get_stat_colour(index) + str(index) + Colours.ENDC)
             )
