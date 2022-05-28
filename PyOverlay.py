@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line always
-VERSION = 1.23
+VERSION = 1.24
 
 try:  # installing and importing all the needed packages
     import math
@@ -906,7 +906,7 @@ if __name__ == "__main__":
   / /_/ / / / / / / / | / / _ \/ ___/ / __ `/ / / /
  / ____/ /_/ / /_/ /| |/ /  __/ /  / / /_/ / /_/ / 
 /_/    \__, /\____/ |___/\___/_/  /_/\__,_/\__, /  
-      /____/                              /____/""" + "\033[0m")
+      /____/                              /____/""" + Colours.BLUE + " v" + str(VERSION) + "\033[0m")
 
     latest_py_overlay = requests.get(
         "https://raw.githubusercontent.com/Kopamed/PyOverlay/main/PyOverlay.py")
