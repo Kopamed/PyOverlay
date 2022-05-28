@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line
-VERSION = 1.11
+import math
+
+VERSION = 1.2
 
 try:  # installing and importing all the needed packages
     import json
@@ -78,7 +80,7 @@ MOJANG_API_PLAYER_LIMIT = 10
 
 
 # Misc standalone classes which make the code more readable ========================================================= #
-class Colors:
+class Colours:
     PINK = '\033[95m'
     BLUE = '\033[94m'
     CYAN = '\033[96m'
@@ -89,6 +91,25 @@ class Colors:
     UNDERLINE = '\033[4m'
     ENDC = '\033[0m'
 
+    @staticmethod
+    def get_stat_colour(index: int):
+        if index < 1000:
+            return ""
+        elif index < 3000:
+            return "\033[33m"
+        elif index < 7500:
+            return "\033[93m"
+        elif index < 15000:
+            return "\033[91m"
+        elif index < 30000:
+            return "\033[95m"
+        elif index < 100000:
+            return "\033[94m"
+        elif index < 500000:
+            return "\033[96m"
+
+        return "\033[92m"
+
 
 class Client:
     Lunar: str = "Make sure you have Auto Who enabled in Hypixel Mods"
@@ -97,9 +118,9 @@ class Client:
 
 
 class APIStatus:
-    UNKNOWN = Colors.BOLD + "Unknown" + Colors.ENDC
-    REACHABLE = Colors.BOLD + Colors.GREEN + "Reachable" + Colors.ENDC
-    UNREACHABLE = Colors.BOLD + Colors.RED + "Unreachable" + Colors.ENDC
+    UNKNOWN = Colours.BOLD + "Unknown" + Colours.ENDC
+    REACHABLE = Colours.BOLD + Colours.GREEN + "Reachable" + Colours.ENDC
+    UNREACHABLE = Colours.BOLD + Colours.RED + "Unreachable" + Colours.ENDC
 
 
 class ConfigManager:
@@ -109,16 +130,16 @@ class ConfigManager:
 
     def save_api_key(self, api_key):
         self._assure_config_exists()
-        with open(self.config_path, "w") as f:
-            f.write(api_key)
+        with open(self.config_path, "w") as f_:
+            f_.write(api_key)
 
     def get_api_key(self):
         self._assure_config_exists()
         if not os.path.isfile(self.config_path):
             open(self.config_path, "w").close()
             return None
-        with open(self.config_path, "r") as f:
-            data = f.read().strip("\n")
+        with open(self.config_path, "r") as f_:
+            data = f_.read().strip("\n")
             if data != "":
                 return data
         return None
@@ -145,6 +166,9 @@ class Model:
 
         self.hypixel_api_reachable: str = APIStatus.UNKNOWN
         self.mojang_api_reachable: str = APIStatus.UNKNOWN
+
+        self._players_joined = 0
+        self._players_left = 0
 
         self.players: List[Player] = []  # players in current lobby
         self._cache: List[Player] = []  # cache storing all the known player's data to reduce the amount of
@@ -187,14 +211,14 @@ class Model:
         self.update_view()
 
     def remove_player(self, name: str):
+        self._players_left += 1
         for player in self.players:
             if player.in_game_name == name:
                 self.players.remove(player)
         self.update_view()
 
     def joined_new_queue(self, joined_players: List[str]):
-        self.players.clear()
-        self.update_view()
+        self._reset_queue()
 
         for name in joined_players:
             player = self.is_player_in_cache(name)
@@ -218,9 +242,7 @@ class Model:
             t.start()
 
     def left_queue(self):
-        self.players.clear()
-        self.update_view()
-        # simply clear and move shit to cache
+        self._reset_queue()
 
     def broken_api_key(self):
         self.api_key = None
@@ -253,6 +275,21 @@ class Model:
     def players_cached(self) -> int:
         return len(self._cache)
 
+    def get_queue_liquidity(self):
+        if self._players_joined == 0:
+            return self._players_left
+        return round(self._players_left / self._players_joined, 2)
+
+    def get_average_index(self):
+        if len(self.players) == 0:
+            return 0
+        index = 0
+        for player in self.players:
+            index += player.index**2
+
+        index = round(math.sqrt(index / len(self.players)))
+        return index
+
     def stop(self):
         self._controller.stop()
         for player in self.players:
@@ -263,6 +300,7 @@ class Model:
         print("saved")
 
     def _add_player(self, player: Player):
+        self._players_joined += 1
         if not self.is_player_in_cache(player.in_game_name):
             self._cache.append(player)
         self.players.append(player)
@@ -300,11 +338,17 @@ class Model:
                 self.set_mojang_api_reachable(False)
                 time.sleep(8)  # arbitrary number of seconds to sleep. Pulled it out of my ass
 
+    def _reset_queue(self):
+        self._players_joined = 0
+        self._players_left = 0
+        self.players.clear()
+        self.update_view()
+
 
 class Player:
-    rank_colours: dict[str, str] = {"MVP_PLUS": Colors.CYAN, "MVP": Colors.CYAN, "SUPERSTAR": Colors.GOLD,
-                                    "VIP": Colors.GREEN,
-                                    "VIP_PLUS": Colors.GREEN, "NON": ""}
+    rank_colours: dict[str, str] = {"MVP_PLUS": Colours.CYAN, "MVP": Colours.CYAN, "SUPERSTAR": Colours.GOLD,
+                                    "VIP": Colours.GREEN,
+                                    "VIP_PLUS": Colours.GREEN, "NON": ""}
 
     def __init__(self, ign: str, model_: Model, uuid_: str = None, nicked: bool = False):
         self._model = model_
@@ -340,7 +384,7 @@ class Player:
             self.bblr,
             self.wins,
             self.finals,
-            stat_colour=self._get_stat_colour()
+            stat_colour=Colours.get_stat_colour(self.index)
         )
 
     def _populate_player_data(self):
@@ -467,11 +511,11 @@ class Player:
 
     def _get_tag_colour(self):
         if self.uuid == "54968fd589a94732b02dad8d9162175f":  # Kopamed's uuid
-            return Colors.CYAN + Colors.BOLD
+            return Colours.CYAN + Colours.BOLD
         elif self.nicked:
-            return Colors.RED
+            return Colours.RED
         elif self.party:
-            return Colors.BLUE
+            return Colours.BLUE
 
         return ""
 
@@ -484,24 +528,6 @@ class Player:
             return "PARTY"
 
         return "-" * 5
-
-    def _get_stat_colour(self):
-        if self.index < 1000:
-            return ""
-        elif self.index < 3000:
-            return "\033[33m"
-        elif self.index < 7500:
-            return "\033[93m"
-        elif self.index < 15000:
-            return "\033[91m"
-        elif self.index < 30000:
-            return "\033[95m"
-        elif self.index < 100000:
-            return "\033[94m"
-        elif self.index < 500000:
-            return "\033[96m"
-
-        return "\033[92m"
 
 
 def fix_line(line: str) -> str:
@@ -573,16 +599,16 @@ class FileListener(Observable):
     def __init__(self, filepath: str, delay: float = 0.1):
         self.filepath: str = filepath
         self.delay = delay
-        with open(self.filepath, "r") as f:
+        with open(self.filepath, "r") as f_:
             # all the lines below this line will get passed to the observers
-            self._read_from_index: int = len(f.readlines())
+            self._read_from_index: int = len(f_.readlines())
         self.new_lines: List[str] = []  # contains all the new lines added to the file since last read
 
     def listen(self) -> None:
         while True:
             self.new_lines = []
-            with open(self.filepath, "r") as f:
-                for line in f.readlines()[self._read_from_index:]:
+            with open(self.filepath, "r") as f_:
+                for line in f_.readlines()[self._read_from_index:]:
                     line = fix_line(line)
                     self.new_lines.append(line)
                     # logging.debug("Added " + line + " to new lines")
@@ -621,30 +647,37 @@ class View:
         self._model = model_
 
     def runtime_stats(self):
-        print(Colors.GOLD + self._model.client + Colors.ENDC)
-        print("Players cached: " + Colors.BOLD + str(self._model.players_cached()) + Colors.ENDC)
+        print(Colours.GOLD + self._model.client + Colours.ENDC)
+        print("Players cached: " + Colours.BOLD + str(self._model.players_cached()) + Colours.ENDC)
         print("Mojang: " + str(self._model.mojang_api_reachable))
         print("Hypixel: " + str(self._model.hypixel_api_reachable))
         print("Hypixel API key: ", end="")
         if self._model.api_key is None:
-            print(Colors.BOLD + Colors.RED + "Not found!" + Colors.ENDC)
+            print(Colours.BOLD + Colours.RED + "Not found!" + Colours.ENDC)
         else:
             print(
-                Colors.CYAN + self._model.api_key[:int(len(self._model.api_key) / 2)] +
-                ("*" * int(len(self._model.api_key) / 2)) + Colors.ENDC
+                Colours.CYAN + self._model.api_key[:int(len(self._model.api_key) / 2)] +
+                ("*" * int(len(self._model.api_key) / 2)) + Colours.ENDC
             )
 
     @clear_screen
     def no_api_key(self):
         self.runtime_stats()
-        print(Colors.RED + "No API key found! Run "
-              + Colors.ENDC + Colors.BOLD + "/api new"
-              + Colors.RED + " on hypixel to generate a key"
-              + Colors.ENDC)
+        print(Colours.RED + "No API key found! Run "
+              + Colours.ENDC + Colours.BOLD + "/api new"
+              + Colours.RED + " on hypixel to generate a key"
+              + Colours.ENDC)
 
     @clear_screen
     def stat_table(self):
         self.runtime_stats()
+
+        if len(self._model.players) > 1:
+            index = self._model.get_average_index()
+            print("Lobby liquidity: {:<3} | Lobby index: {}".format(
+                self._model.get_queue_liquidity(),
+                Colours.get_stat_colour(index) + str(index) + Colours.ENDC)
+            )
 
         form = "{:^16} │ {:^5} │ {:^4} │ {:^4} │ {:^6} │ {:^6} │ {:^6} │ {:^5} │ {:^5}"
         header = form.format("Name", "Tag", "Star", "WS", "FKDR", "WLR", "BBLR", "Wins", "Finals")
@@ -653,11 +686,11 @@ class View:
 
         form = "{}{:^16}{end} │ {}{:^5}{end} │ {stat_colour}{:^4}{end} │ {stat_colour}{:^4}{end} │ {stat_colour}{" \
                ":^6}{end} │ {stat_colour}{:^6}{end} │ {stat_colour}{:^6}{end} │ {stat_colour}{:^5}{end} │ {" \
-               "stat_colour}{:^5}{end}".replace("{end}", Colors.ENDC)
+               "stat_colour}{:^5}{end}".replace("{end}", Colours.ENDC)
 
         if len(self._model.players) == 0:
             print("{:^l}".replace("l", str(len(header))).format(
-                Colors.GOLD + Colors.BOLD + "No players found" + Colors.ENDC))
+                Colours.GOLD + Colours.BOLD + "No players found" + Colours.ENDC))
         else:
             for player in self._model.players:
                 print(player.to_string(form))
@@ -883,7 +916,9 @@ if __name__ == "__main__":
 
         if latest_version > VERSION:
             print(
-                f"An update is available. Would you like to update PyOverlay from version {VERSION} to  {latest_version}? [Y/n]")
+                f"An update is available. Would you like to update PyOverlay from "
+                f"version {VERSION} to  {latest_version}? [Y/n]")
+
             if "n" not in input().lower():
                 with open("PyOverlay.py", "w") as f:
                     f.write(latest_py_overlay)
