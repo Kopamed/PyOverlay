@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line always
-VERSION = 1.25
+VERSION = 1.26
 
 try:  # installing and importing all the needed packages
     import math
@@ -924,7 +924,10 @@ if __name__ == "__main__":
                 with open("PyOverlay.py", "w") as f:
                     f.write(latest_py_overlay)
                 print("Update complete! Please re-run PyOverlay")
+                input()
                 sys.exit(0)
+            else:
+                print("Ignoring update. ")
 
     mc_log_path = str(Pathlib.home())
     client = ""
