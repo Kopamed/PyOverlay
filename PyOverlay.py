@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# VERSION variable MUST be on the 4th line
+# VERSION variable MUST be on the 4th line always
 VERSION = 1.21
 
 try:  # installing and importing all the needed packages
