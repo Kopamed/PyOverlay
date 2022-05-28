@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line
-import math
-
-VERSION = 1.2
+VERSION = 1.21
 
 try:  # installing and importing all the needed packages
+    import math
     import json
     import os
     import time
@@ -285,7 +284,7 @@ class Model:
             return 0
         index = 0
         for player in self.players:
-            index += player.index**2
+            index += player.index ** 2
 
         index = round(math.sqrt(index / len(self.players)))
         return index
