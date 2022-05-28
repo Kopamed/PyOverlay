@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line always
-VERSION = 1.22
+VERSION = 1.23
 
 try:  # installing and importing all the needed packages
     import math
@@ -646,7 +646,8 @@ class View:
         self._model = model_
 
     def runtime_stats(self):
-        print(Colours.GOLD + self._model.client + Colours.ENDC)
+        print(Colours.CYAN + Colours.BOLD + "PyOverlay" + Colours.BLUE + " v" + str(VERSION) + Colours.ENDC
+              + " | " + Colours.GOLD + self._model.client + Colours.ENDC)
         print("Players cached: " + Colours.BOLD + str(self._model.players_cached()) + Colours.ENDC)
         print("Mojang: " + str(self._model.mojang_api_reachable))
         print("Hypixel: " + str(self._model.hypixel_api_reachable))
