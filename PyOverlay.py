@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line always
-VERSION = 1.26
+VERSION = 1.27
 
 try:  # installing and importing all the needed packages
     import math
@@ -74,6 +74,7 @@ except Exception as e:
 # Todo: add an option to change this
 # Todo: Move most important classes to top
 # Todo: display different top message depending on client
+# toDo: Connecting to bedwarspractice.club, 25565
 
 MOJANG_API_PLAYER_LIMIT = 10
 
@@ -162,6 +163,7 @@ class Model:
     def __init__(self, file_path: str, client_: str, api_key: str = None):
         self.api_key = api_key  # hypixel api key
         self.client: str = client_
+        self.on_server = ""
 
         self.hypixel_api_reachable: str = APIStatus.UNKNOWN
         self.mojang_api_reachable: str = APIStatus.UNKNOWN
@@ -343,6 +345,10 @@ class Model:
         self.players.clear()
         self.update_view()
 
+    def joined_server(self, server_name):
+        self.on_server = server_name
+        self.update_view()
+
 
 class Player:
     rank_colours: dict[str, str] = {"MVP_PLUS": Colours.CYAN, "MVP": Colours.CYAN, "SUPERSTAR": Colours.GOLD,
@@ -427,7 +433,12 @@ class Player:
 
             if self.data_downloaded and not self.nicked:  # ensuring we have the player's data
                 bw_stats = self.json["stats"]["Bedwars"]
-                achievements = self.json["achievements"]
+
+                try:
+                    achievements = self.json["achievements"]
+                    self.stars = achievements["bedwars_level"]
+                except KeyError:
+                    pass
 
                 try:
                     self.rank = self.json["monthlyPackageRank"]
@@ -475,11 +486,6 @@ class Player:
 
                 try:
                     self.winstreak = bw_stats["winstreak"]
-                except KeyError:
-                    pass
-
-                try:
-                    self.stars = achievements["bedwars_level"]
                 except KeyError:
                     pass
 
@@ -549,6 +555,7 @@ class Controller:
         self._file_listener.attach(LeaveObserver(model_))
         self._file_listener.attach(ApiKeyObserver(model_))
         self._file_listener.attach(LobbyLeaveObserver(model_))
+        self._file_listener.attach(ServerJoinObserver(model_))
         self._file_listener_thread = Thread(target=self._file_listener.listen)
 
     def run(self):
@@ -645,20 +652,33 @@ class View:
     def __init__(self, model_: Model):
         self._model = model_
 
+    def sever_stats(self):
+        server_name = self._model.on_server
+        if server_name == "mc.hypixel.net" or server_name == "bedwarspractice.club":
+            if server_name == "bedwarspractice.club":
+                print(
+                    "Hypixel: {:<11} | ".format(self._model.hypixel_api_reachable) +
+                    Colours.GOLD + "Bedwarspractice does not have a stats api but hypixel stats can be displayed" +
+                    Colours.ENDC
+                )
+            else:
+                print("Hypixel: " + self._model.hypixel_api_reachable)
+
+            print("Hypixel API key: ", end="")
+            if self._model.api_key is None:
+                print(Colours.BOLD + Colours.RED + "Not found!" + Colours.ENDC)
+            else:
+                print(
+                    Colours.CYAN + self._model.api_key[:int(len(self._model.api_key) / 2)] +
+                    ("*" * int(len(self._model.api_key) / 2)) + Colours.ENDC
+                )
+
     def runtime_stats(self):
         print(Colours.CYAN + Colours.BOLD + "PyOverlay" + Colours.BLUE + " v" + str(VERSION) + Colours.ENDC
               + " | " + Colours.GOLD + self._model.client + Colours.ENDC)
         print("Players cached: " + Colours.BOLD + str(self._model.players_cached()) + Colours.ENDC)
         print("Mojang: " + str(self._model.mojang_api_reachable))
-        print("Hypixel: " + str(self._model.hypixel_api_reachable))
-        print("Hypixel API key: ", end="")
-        if self._model.api_key is None:
-            print(Colours.BOLD + Colours.RED + "Not found!" + Colours.ENDC)
-        else:
-            print(
-                Colours.CYAN + self._model.api_key[:int(len(self._model.api_key) / 2)] +
-                ("*" * int(len(self._model.api_key) / 2)) + Colours.ENDC
-            )
+        self.sever_stats()
 
     @clear_screen
     def no_api_key(self):
@@ -742,6 +762,9 @@ class JoinObserver(FileObserver):
             if line.lower().startswith("online: "):
                 logging.info("Joined new queue!")
                 self._model.joined_new_queue(line.strip("ONLINE: ").split(", "))
+            elif line.startswith("Players in this game: "):
+                logging.info("Joined Bedwraspractice lobby")
+                self._model.joined_new_queue(line.strip("Players in this game: ").split(" "))
             elif " has joined" in line.lower():
                 name = line.split(" ")[0]
                 logging.info(name + "joined the queue!")
@@ -793,6 +816,26 @@ class ApiKeyObserver(FileObserver):
                 api_key = line.split(" ")[-1]
                 logging.info("New API key found: " + api_key)
                 self._model.new_api_key(api_key)
+
+
+class ServerJoinObserver(FileObserver):
+    """
+    Reads through lines to dermine when you have joined a server.
+    Join logs start with Connecting to
+    """
+
+    def __init__(self, model_: Model):
+        super().__init__(model_)
+
+    def update(self, observable: FileListener) -> None:
+        for line in observable.new_lines:
+            if line.startswith("[Client thread/INFO]: Connecting to "):
+                server_ip_data = line.strip("[Client thread/INFO]: Connecting to ").split(", ")
+                server_name = server_ip_data[0]
+                if server_name.endswith("."):
+                    server_name = server_name[:-1]
+                logging.debug("connecting to " + server_name)
+                self._model.joined_server(server_name)
 
 
 # Classes and functions required for initialization ================================================================== #
