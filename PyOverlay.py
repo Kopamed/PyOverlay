@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line always
-VERSION = 1.28
+VERSION = 1.275
 
 try:  # installing and importing all the needed packages
     import math
