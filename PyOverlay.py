@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # VERSION variable MUST be on the 4th line always
-VERSION = 1.27
+VERSION = 1.28
 
 try:  # installing and importing all the needed packages
     import math
@@ -63,6 +63,12 @@ try:  # installing and importing all the needed packages
     except ModuleNotFoundError:
         install("hashlib")
         import hashlib
+
+    try:
+        from pynput import keyboard
+    except ModuleNotFoundError:
+        install("pynput")
+        from pynput import keyboard
 
 except Exception as e:
     print(e)
@@ -164,6 +170,11 @@ class Model:
         self.api_key = api_key  # hypixel api key
         self.client: str = client_
         self.on_server = ""
+
+        self.commands: List[Command] = [GamemodeCommand(self), StopCommand(self)]
+        self.command_line_input_text: str = ""
+        self._on_text_point = len(self.command_line_input_text)
+        self.command_line_out: List[str] = []
 
         self.hypixel_api_reachable: str = APIStatus.UNKNOWN
         self.mojang_api_reachable: str = APIStatus.UNKNOWN
@@ -298,7 +309,8 @@ class Model:
         for thread in self._request_threads:
             thread.join(0.01)
         clear_screen()
-        print("saved")
+        print("FSIUDGFSDGFHJKSDGJF")
+        sys.exit(0)
 
     def _add_player(self, player: Player):
         self._players_joined += 1
@@ -347,6 +359,27 @@ class Model:
 
     def joined_server(self, server_name):
         self.on_server = server_name
+        self.update_view()
+
+    def key_typed(self, char: str):
+        self.command_line_input_text += char
+        self._on_text_point += 1
+        self.update_view()
+
+    def delete_char(self):
+        if len(self.command_line_input_text) > 0:
+            self.command_line_input_text = self.command_line_input_text[:-1]
+            self.update_view()
+
+    def enter_command(self):
+        for command in self.commands:
+            if command.is_trigger(self.command_line_input_text):
+                command.execute(self.command_line_input_text.split(" ")[1:])
+        self.command_line_input_text = ""
+        self.update_view()
+
+    def add_text_to_cmd(self, text: str):
+        self.command_line_out.append(text)
         self.update_view()
 
 
@@ -550,6 +583,8 @@ class Controller:
     """
 
     def __init__(self, model_: Model, file_path: str):
+        self._running = True
+        self._model = model_
         self._file_listener = FileListener(file_path)
         self._file_listener.attach(JoinObserver(model_))
         self._file_listener.attach(LeaveObserver(model_))
@@ -558,11 +593,38 @@ class Controller:
         self._file_listener.attach(ServerJoinObserver(model_))
         self._file_listener_thread = Thread(target=self._file_listener.listen)
 
+        self._key_press_listener_thread = Thread(target=self._start_key_listening)
+
     def run(self):
+        self._file_listener_thread.name = "FileListener"
         self._file_listener_thread.start()
+        self._key_press_listener_thread.name = "InputListener"
+        self._key_press_listener_thread.start()
+
+    def _start_key_listening(self):
+        with keyboard.Listener(
+                on_press=self.on_press) as listener:
+            while True:
+                time.sleep(0.01)
+                if not self._running:
+                    listener.stop()
+
+    def on_press(self, key):
+        if hasattr(key, "char"):
+            self._model.key_typed(key.char)
+        else:
+            if key == keyboard.Key.space:
+                self._model.key_typed(" ")
+            elif key == keyboard.Key.backspace:
+                self._model.delete_char()
+            elif key == keyboard.Key.enter:
+                self._model.enter_command()
 
     def stop(self):
+        self._running = False
+        self._file_listener.listening = False
         self._file_listener_thread.join(0.1)
+        self._key_press_listener_thread.join(0.1)
 
 
 class Observable(ABC):
@@ -605,13 +667,14 @@ class FileListener(Observable):
     def __init__(self, filepath: str, delay: float = 0.1):
         self.filepath: str = filepath
         self.delay = delay
+        self.listening = True
         with open(self.filepath, "r") as f_:
             # all the lines below this line will get passed to the observers
             self._read_from_index: int = len(f_.readlines())
         self.new_lines: List[str] = []  # contains all the new lines added to the file since last read
 
     def listen(self) -> None:
-        while True:
+        while self.listening:
             self.new_lines = []
             with open(self.filepath, "r") as f_:
                 for line in f_.readlines()[self._read_from_index:]:
@@ -652,6 +715,17 @@ class View:
     def __init__(self, model_: Model):
         self._model = model_
 
+    def commandline(self):
+        print()
+        print(f"Commands: {', '.join(i.get_trigger() for i in self._model.commands)}")
+        print(f"$ {self._model.command_line_input_text}")
+        if len(self._model.command_line_out) >= 3:
+            for i in self._model.command_line_out[-3:]:
+                print(i)
+        else:
+            for i in self._model.command_line_out:
+                print(i)
+
     def sever_stats(self):
         server_name = self._model.on_server
         if server_name == "mc.hypixel.net" or server_name == "bedwarspractice.club":
@@ -687,6 +761,7 @@ class View:
               + Colours.ENDC + Colours.BOLD + "/api new"
               + Colours.RED + " on hypixel to generate a key"
               + Colours.ENDC)
+        self.commandline()
 
     @clear_screen
     def stat_table(self):
@@ -714,6 +789,8 @@ class View:
         else:
             for player in self._model.players:
                 print(player.to_string(form))
+
+        self.commandline()
 
     @staticmethod
     def _sep_line(header):
@@ -836,6 +913,55 @@ class ServerJoinObserver(FileObserver):
                     server_name = server_name[:-1]
                 logging.debug("connecting to " + server_name)
                 self._model.joined_server(server_name)
+
+
+class Command(ABC):
+    """
+    The Command interface declares a method for executing a command.
+    """
+
+    def __init__(self, model_: Model):
+        self._model = model_
+
+    @abstractmethod
+    def get_trigger(self) -> str:
+        pass
+
+    @abstractmethod
+    def is_trigger(self, text: str):
+        pass
+
+    @abstractmethod
+    def execute(self, args: List[str]) -> None:
+        pass
+
+
+class GamemodeCommand(Command):
+    def __init__(self, model_: Model):
+        super().__init__(model_)
+
+    def get_trigger(self) -> str:
+        return "mode"
+
+    def is_trigger(self, text: str):
+        return text == "mode"
+
+    def execute(self, args: List[str]) -> None:
+        self._model.add_text_to_cmd("WORKING")
+
+
+class StopCommand(Command):
+    def __init__(self, model_: Model):
+        super().__init__(model_)
+
+    def get_trigger(self) -> str:
+        return "stop"
+
+    def is_trigger(self, text: str):
+        return text == "stop"
+
+    def execute(self, args: List[str]) -> None:
+        self._model.stop()
 
 
 # Classes and functions required for initialization ================================================================== #
