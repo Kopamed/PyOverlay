@@ -855,7 +855,7 @@ class Paths(ABC):
 
 class LinuxPaths(Paths):
     def get_lunar_path(self):
-        return "/.lunarclient/offline/1.8/logs/latest.log"
+        return "/.lunarclient/offline/multiver/logs/latest.log"
 
     def get_badlion_path(self):
         return "/.minecraft/logs/blclient/minecraft/latest.log"
